@@ -1,4 +1,4 @@
-import wget, os, gzip, pickle, random, re, sys, importlib, tqdm, math, os, gzip, re
+import wget, os, gzip, pickle, random, re, sys, importlib, tqdm, math, os, gzip, re, string
 
 from tqdm import trange
 from collections import Counter
@@ -12,7 +12,7 @@ from random import choice
 
 IMDB_URL = 'http://dlvu.github.io/data/imdb.{}.pkl.gz'
 IMDB_FILE = 'imdb.{}.pkl.gz'
-WP_DATA = 'http://mattmahoney.net/dc/enwik8.gz'
+WP_DATA = 'https://codeberg.org/pbm/former/raw/branch/master/data/enwik8.gz'
 
 PAD, START, END, UNK = '.pad', '.start', '.end', '.unk'
 
@@ -29,6 +29,19 @@ TOY = {
     '_adj': ['short', 'quick', 'busy', 'nice', 'gorgeous', 'spectacular', 'reluctant', 'systematic', 'willowy', 'engaged', 'synthetic']
 }
 
+PRINTABLE = set(ord(c) for c in (string.digits + string.ascii_letters + string.punctuation + string.whitespace))
+
+def cas(i):
+    """
+    Character-as-string. Filters out the ascii codes that aren't safe to print.
+    :return:
+    """
+    assert i >= 0 and i < 256
+    return '□' if i not in PRINTABLE else str(chr(i))
+
+def t(blist):
+    return torch.tensor([int(b) for b in blist], dtype=torch.uint8)
+
 def gen_sentence(sent=SENT, g=TOY):
 
     symb = '_[a-z]*'
@@ -42,18 +55,26 @@ def gen_sentence(sent=SENT, g=TOY):
         s = match.span()
         sent = sent[:s[0]] + random.choice(g[sent[s[0]:s[1]]]) + sent[s[1]:]
 
-def load_toy(ntrain=100_000, ntest=20_000, to_torch=True):
+def load_toy(ntrain=100_000, ntest=20_000, to_torch=True, final=False, seed=0):
     """
     Generates language from a toy grammar.
     :param ntrain:
     :param ntest:
+    :param to_torch: Whether to return torch tensors (if false, returns python lists)
+    :param final: Whether to return the test set or the validation set (True for test)
     :return:
     """
+
+    random.seed(seed)
 
     train, test = '', ''
     while len(train) < ntrain:
         train += gen_sentence() + ' . '
-    while len(train) < ntrain:
+
+    random.seed(seed if final else seed + 1)
+    # -- change the seed so we get different test/val sets depending on `final`
+
+    while len(test) < ntest:
         test += gen_sentence() + ' . '
 
     ctr = Counter(train + test)
@@ -68,16 +89,14 @@ def load_toy(ntrain=100_000, ntest=20_000, to_torch=True):
 
     return (train, test), (i2t, t2i)
 
-def t(blist):
-    return torch.tensor([int(b) for b in blist], dtype=torch.uint8)
-
-def load_wp(fname='enwik8.gz', split=(90, 5, 5), to_torch=True):
+def load_wp(fname='enwik8.gz', split=(90, 5, 5), to_torch=True, final=False):
     """
     Load the enwik8 dataset from the Hutter challenge as a list or vector of bytes.
-    :param path:
-    :param n_train:
-    :param n_valid:
-    :param n_test:
+    :param fname: Filename for the downloaded data.
+    :param split: Percentages for the train/val/test split.
+    :param to_torch: Whether to return torch tensors (True) or python lists (False)
+    :param final: If False, returns train/val if True returns train/test with the validation
+    data added to the training data.
     :return:
     """
 
@@ -87,17 +106,28 @@ def load_wp(fname='enwik8.gz', split=(90, 5, 5), to_torch=True):
         wget.download(WP_DATA, out=fname)
         
     with gzip.open(fname, 'r') if fname.endswith('.gz') else open(fname, 'rb') as file:
+
         all = file.read()
+        ctr = Counter(all)
+
+        i2t = {token : cas(token) for token, freq in ctr.most_common()}
+        t2i = {w : i for i, w in enumerate(i2t)}
 
         split = tuple(s/sum(split) for s in split)
         split = tuple(int(s * len(all)) for s in split)
 
         train, val, test = all[:split[0]], all[split[0]:split[0]+split[1]], all[split[0]+split[1]:]
 
-        if to_torch:
-            return t(train), t(val), t(test) # Torch vectors (this takes a few seconds)
+        if final:
+            train = train + val
+            wh = test
+        else:
+            wh = val
 
-        return train, val, test # Plain python lists
+        if to_torch:
+            return (t(train), t(wh)), (i2t, t2i)
+
+        return (train, wh), (i2t, t2i)
 
 
 def load_xor(ntrain=25_000, ntest=25_000, seed=0) -> tuple[Dataset, Dataset, tuple[I2W, W2I], Literal[2]]:
@@ -221,6 +251,3 @@ def load_imdb(final=False, val=5000, seed=0, voc=None, char=False) -> tuple[Data
     return (x_train, y_train), \
            (x_val, y_val), \
            (i2w, w2i), 2
-
-def load_wikipedia():
-    pass # todo

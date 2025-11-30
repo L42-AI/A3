@@ -170,7 +170,7 @@ def train(
         val_losses.append(val_loss) 
         val_accuracies.append(val_accuracy)
 
-        print(f"Epoch {epoch+1} | Train Loss: {train_losses[-1]:.4f} | Train Acc: {train_accuracies[-1]:.4f} | Val Loss: {val_losses[-1]:.4f} | Val Acc: {val_accuracies[-1]:.4f}")
+        print(f"    Epoch {epoch+1} | Train Loss: {train_losses[-1]:.4f} | Train Acc: {train_accuracies[-1]:.4f} | Val Loss: {val_losses[-1]:.4f} | Val Acc: {val_accuracies[-1]:.4f}")
 
     if plot:
         import matplotlib.pyplot as plt
@@ -196,14 +196,80 @@ def train(
         plt.tight_layout()
         plt.show()
 
-for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+# for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+#     print(f"Dataset {dataset_func.__name__}:")
+#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+    
+#     x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
+    
+#     sequence_length = get_longest_sequence(x)
+#     x_train, x_val = pad_sequences(
+#         x_train,
+#         x_val,
+#         w2i.get(".pad"),
+#         sequence_length
+#     )
+
+#     vocab_size = len(i2w)
+#     for pooling_method in ['mean', 'max', 'first']:
+#         print(f"Training with {pooling_method} pooling:")
+#         model = PoolingBaseline(vocab_size, numcls, pooling=pooling_method)
+#         train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+
+# Q4:
+
+class SimpleSelfAttention(torch.nn.Module):
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_t = x.transpose(1, 2)
+        w = (x_t @ x).softmax(dim=-1) # TODO: Check if needs to convert to causal
+        return (w @ x_t).transpose(1, 2)
+    
+class SelfAttention(PoolingBaseline):
+    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='max'):
+        super().__init__(vocab_size, num_classes, pooling)
+
+        self.attention = SimpleSelfAttention()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x[:, :256]  # Ensure input is capped at 256 tokens
+        embedded = self.embedding(x)
+        attended = self.attention(embedded)
+        pooled = self.apply_pooling(attended)
+        output = self.fc(pooled)
+        return self.activation(output)
+    
+# Q5:
+
+# for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+#     print(f"Dataset {dataset_func.__name__}:")
+#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+    
+#     x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
+    
+#     sequence_length = get_longest_sequence(x)
+#     x_train, x_val = pad_sequences(
+#         x_train,
+#         x_val,
+#         w2i.get(".pad"),
+#         sequence_length
+#     )
+
+#     vocab_size = len(i2w)
+#     for pooling_method in ['mean', 'max', 'first']:
+#         print(f"  Training with {pooling_method} pooling:")
+#         model = SelfAttention(vocab_size, numcls, pooling=pooling_method)
+#         train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.001, plot=False)
+    
+    
+for dataset_func in [load_imdb_synth, load_xor]:
     print(f"Dataset {dataset_func.__name__}:")
     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
     
-    x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
-    
-    sequence_length = get_longest_sequence(x)
+    sequence_length = get_longest_sequence(x_train + x_val)
     x_train, x_val = pad_sequences(
         x_train,
         x_val,
@@ -212,31 +278,9 @@ for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
     )
 
     vocab_size = len(i2w)
-    for pooling_method in ['mean', 'max', 'first']:
-        print(f"Training with {pooling_method} pooling:")
-        model = PoolingBaseline(vocab_size, numcls, pooling=pooling_method)
-        train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
-
-# Q4:
-
-class SimpleSelfAttention(torch.nn.Module): #TODO: implement Simple Self-Attention Mechanism
-    def __init__(self):
-        super().__init__()
-        ...
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        ...
-
-class SelfAttention(PoolingBaseline):
-    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='mean'):
-        super().__init__(vocab_size, num_classes, pooling)
-
-        self.attention = SimpleSelfAttention()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        embedded = self.embedding(x)
-        attended = self.attention(embedded)
-        pooled = self.apply_pooling(attended)
-        output = self.fc(pooled)
-        return self.activation(output)
+    for pooling_method in ['first']:
+        print(f"  Training with {pooling_method} pooling:")
+        model = SelfAttention(vocab_size, numcls, pooling=pooling_method)
+        train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.001, plot=False)
     
+
