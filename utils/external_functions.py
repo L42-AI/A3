@@ -100,7 +100,7 @@ def load_wp(fname='enwik8.gz', split=(90, 5, 5), to_torch=True):
         return train, val, test # Plain python lists
 
 
-def load_xor(ntrain=25_000, ntest=25_000, seed=0):
+def load_xor(ntrain=25_000, ntest=25_000, seed=0) -> tuple[Dataset, Dataset, tuple[I2W, W2I], Literal[2]]:
 
     random.seed(seed)
 
@@ -126,7 +126,7 @@ def load_xor(ntrain=25_000, ntest=25_000, seed=0):
         (dataset[ntrain:], labels[ntrain:]), \
         (i2w, w2i), 2
 
-def load_imdb_synth(ntrain=25_000, ntest=25_000, seed=0):
+def load_imdb_synth(ntrain=25_000, ntest=25_000, seed=0) -> tuple[Dataset, Dataset, tuple[I2W, W2I], Literal[2]]:
     """
     Synthetic IMDb dataset
     :param seed:
