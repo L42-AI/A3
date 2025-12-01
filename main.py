@@ -71,6 +71,8 @@ class Baseline(torch.nn.Module):
         self.fc = torch.nn.Linear(300, num_classes)
         self.activation = torch.nn.Sigmoid()
 
+        self.apply_pooling = self._apply_mean_pooling
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         embedded = self.embedding(x)
         pooled = self.apply_pooling(embedded)
@@ -78,8 +80,11 @@ class Baseline(torch.nn.Module):
 
         return self.activation(output)
     
-    def apply_pooling(self, embedded: torch.Tensor) -> torch.Tensor: # TODO: Needs to be padding-aware
-        return embedded.mean(dim=1)
+    def _apply_mean_pooling(self, embedded: torch.Tensor) -> torch.Tensor:
+        non_pad_mask = (embedded.abs().sum(dim=-1) != 0).unsqueeze(-1)  # Create a mask for non-padding tokens
+        summed = (embedded * non_pad_mask).sum(dim=1)  # Take sum of real sequence tokens
+        counts = non_pad_mask.sum(dim=1)  # Take count of real sequence tokens
+        return summed / counts.clamp(min=1)  # Avoid division by zero
     
 # Q3
 
@@ -88,15 +93,17 @@ class PoolingBaseline(Baseline):
         super().__init__(vocab_size, num_classes)
 
         assert pooling in ['mean', 'max', 'first'], "Pooling must be 'mean', 'max' or 'first'"
-        self.pooling = pooling
+        if pooling == 'mean':
+            self.apply_pooling = self._apply_mean_pooling
+        elif pooling == 'max':
+            self.apply_pooling = self._apply_max_pooling
+        elif pooling == 'first':
+            self.apply_pooling = lambda embedded: embedded[:, 0, :]
 
-    def apply_pooling(self, embedded: torch.Tensor) -> torch.Tensor: # TODO: Needs to be padding-aware
-        if self.pooling == 'mean':
-            return embedded.mean(dim=1)
-        elif self.pooling == 'max':
-            return embedded.max(dim=1)[0]
-        elif self.pooling == 'first':
-            return embedded[:, 0, :]
+    def _apply_max_pooling(self, embedded: torch.Tensor) -> torch.Tensor:
+        non_pad_mask = (embedded.abs().sum(dim=-1) != 0).unsqueeze(-1)  # Create a mask for non-padding tokens
+        masked_embedded = embedded.masked_fill(~non_pad_mask, float('-inf'))  # Set padded positions to -inf for max pooling
+        return masked_embedded.max(dim=1)[0]  # Max pooling over the sequence length dimension
     
 def run_epoch_on_segment(
     model: Baseline,
@@ -196,26 +203,26 @@ def train(
         plt.tight_layout()
         plt.show()
 
-# for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
-#     print(f"Dataset {dataset_func.__name__}:")
-#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
-#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+    print(f"Dataset {dataset_func.__name__}:")
+    dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+    (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
     
-#     x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
+    x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
     
-#     sequence_length = get_longest_sequence(x)
-#     x_train, x_val = pad_sequences(
-#         x_train,
-#         x_val,
-#         w2i.get(".pad"),
-#         sequence_length
-#     )
+    sequence_length = get_longest_sequence(x)
+    x_train, x_val = pad_sequences(
+        x_train,
+        x_val,
+        w2i.get(".pad"),
+        sequence_length
+    )
 
-#     vocab_size = len(i2w)
-#     for pooling_method in ['mean', 'max', 'first']:
-#         print(f"Training with {pooling_method} pooling:")
-#         model = PoolingBaseline(vocab_size, numcls, pooling=pooling_method)
-#         train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+    vocab_size = len(i2w)
+    for pooling_method in ['mean', 'max', 'first']:
+        print(f"Training with {pooling_method} pooling:")
+        model = PoolingBaseline(vocab_size, numcls, pooling=pooling_method)
+        train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
 
 # Q4:
 
