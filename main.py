@@ -318,11 +318,12 @@ class MultiHeadSelfAttention(torch.nn.Module):
         self.heads = torch.nn.ModuleList([
             SelfAttentionHead(embedding_dim // num_heads) for _ in range(num_heads)
         ])
-        self.unify_heads = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.final_layer = torch.nn.Linear(embedding_dim, embedding_dim)
 
     def extract_head_dimension(self, x: torch.Tensor, per_head_dim: int) -> int:
         """
         Reshapes the embedding dimension into (num_heads, per_head_dim)
+        and reorders the tensor to have heads as a separate dimension.
         (B, T, E) -> (B, H, T, E/H)
         """
         x = x.view(x.size(0), x.size(1), len(self.heads), per_head_dim)
@@ -332,9 +333,11 @@ class MultiHeadSelfAttention(torch.nn.Module):
         per_head_dim = x.size(-1) // len(self.heads)
 
         x = self.extract_head_dimension(x, per_head_dim)  # (B, T, E) -> (B, H, T, E/H)
-        out = torch.cat([head(x[:, i, :, :]) for i, head in enumerate(self.heads)], dim=-1) # (B, T, E)
-        out = self.unify_heads(out)
-        return self.unify_heads(out)
+        heads_output = []
+        for head in self.heads:
+            heads_output.append(head(x))
+        unified_heads_output = torch.cat(heads_output, dim=-1)
+        return self.final_layer(unified_heads_output)
 
 class FullSelfAttentionNN(SelfAttentionNN):
     def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
@@ -359,3 +362,14 @@ for dataset_func in [ load_imdb_synth, load_xor]:
     print(f"  Training with first pooling:")
     model = FullSelfAttentionNN(vocab_size, numcls, pooling='first')
     train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+
+# Q7:
+
+# Q8:
+
+#TODO: Add positional encoding to Self-Attention models
+
+# Q9:
+
+#TODO: Build into transformer architecture
+
