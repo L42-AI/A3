@@ -297,17 +297,18 @@ class SelfAttentionHead(torch.nn.Module):
     def __init__(self, embedding_dim: int):
         super().__init__()
         self.embedding_dim = embedding_dim
-        self.to_keys = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.to_queries = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.to_values = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.key_head = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.query_head = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.value_head = torch.nn.Linear(embedding_dim, embedding_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        keys = self.to_keys(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
-        queries = self.to_queries(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
-        values = self.to_values(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
+        keys = self.key_head(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
+        queries = self.query_head(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
+        values = self.value_head(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
 
-        scaled_dot_product = (queries @ keys.transpose(-2, -1)) / np.sqrt(self.embedding_dim)
-        w = scaled_dot_product.softmax(dim=-1) # (B, K, E, E)
+        w_prime = (queries @ keys.transpose(-2, -1)) # (B, K, E, T) @ (B, K, T, E) -> (B, K, E, E)
+        scaled_w_prime = w_prime / np.sqrt(self.embedding_dim)
+        w = scaled_w_prime.softmax(dim=-1)
         return (w @ values).transpose(-2, -1) # (B, K, E, E) @ (B, K, E, T) -> (B, K, E, T) -> (B, K, T, E)
     
 class MultiHeadSelfAttention(torch.nn.Module):
