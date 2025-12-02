@@ -32,14 +32,14 @@ def pad_sequences(x_train: type.X, x_val: type.X, pad_token_id: int, longest_seq
     x_val_padded = [seq + [pad_token_id] * (longest_seq - len(seq)) for seq in x_val]
     return x_train_padded, x_val_padded
 
-sequence_length = get_longest_sequence()
-(x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = load_imdb()
-x_train, x_val = pad_sequences(
-    x_train,
-    x_val,
-    w2i.get(".pad"),
-    sequence_length
-)
+# sequence_length = get_longest_sequence()
+# (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = load_imdb()
+# x_train, x_val = pad_sequences(
+#     x_train,
+#     x_val,
+#     w2i.get(".pad"),
+#     sequence_length
+# )
 
 def train(
     x_train: type.X,
@@ -65,11 +65,19 @@ def train(
 # Q2
 
 class Baseline(torch.nn.Module):
-    def __init__(self, vocab_size: int, num_classes: int):
+    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='mean'):
         super(Baseline, self).__init__()
         self.embedding = torch.nn.Embedding(vocab_size, 300, padding_idx=0) # Add padding index to ignore .pad token
         self.fc = torch.nn.Linear(300, num_classes)
         self.activation = torch.nn.Sigmoid()
+
+        assert pooling in ['mean', 'max', 'first'], "Pooling must be 'mean', 'max' or 'first'"
+        if pooling == 'mean':
+            self.apply_pooling = self._apply_mean_pooling
+        elif pooling == 'max':
+            self.apply_pooling = self._apply_max_pooling
+        elif pooling == 'first':
+            self.apply_pooling = lambda embedded: embedded[:, 0, :]
 
         self.apply_pooling = self._apply_mean_pooling
 
@@ -80,31 +88,24 @@ class Baseline(torch.nn.Module):
 
         return self.activation(output)
     
+    def find_mask(self, x: torch.Tensor) -> torch.Tensor:
+        """ all non-zero sums are real embeddings, zeros are padding """
+        return (x.abs().sum(dim=-1) != 0).unsqueeze(-1)  # Assuming padding index is 0
+
     def _apply_mean_pooling(self, embedded: torch.Tensor) -> torch.Tensor:
-        non_pad_mask = (embedded.abs().sum(dim=-1) != 0).unsqueeze(-1)  # Create a mask for non-padding tokens
+        non_pad_mask = self.find_mask(embedded) # Create a mask for non-padding tokens
         summed = (embedded * non_pad_mask).sum(dim=1)  # Take sum of real sequence tokens
         counts = non_pad_mask.sum(dim=1)  # Take count of real sequence tokens
         return summed / counts.clamp(min=1)  # Avoid division by zero
     
-# Q3
-
-class PoolingBaseline(Baseline):
-    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='mean'):
-        super().__init__(vocab_size, num_classes)
-
-        assert pooling in ['mean', 'max', 'first'], "Pooling must be 'mean', 'max' or 'first'"
-        if pooling == 'mean':
-            self.apply_pooling = self._apply_mean_pooling
-        elif pooling == 'max':
-            self.apply_pooling = self._apply_max_pooling
-        elif pooling == 'first':
-            self.apply_pooling = lambda embedded: embedded[:, 0, :]
-
     def _apply_max_pooling(self, embedded: torch.Tensor) -> torch.Tensor:
-        non_pad_mask = (embedded.abs().sum(dim=-1) != 0).unsqueeze(-1)  # Create a mask for non-padding tokens
+        non_pad_mask = self.find_mask(embedded) # Create a mask for non-padding tokens
         masked_embedded = embedded.masked_fill(~non_pad_mask, float('-inf'))  # Set padded positions to -inf for max pooling
         return masked_embedded.max(dim=1)[0]  # Max pooling over the sequence length dimension
     
+
+# Q3
+
 def run_epoch_on_segment(
     model: Baseline,
     x: type.X,
@@ -203,38 +204,37 @@ def train(
         plt.tight_layout()
         plt.show()
 
-for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
-    print(f"Dataset {dataset_func.__name__}:")
-    dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
-    (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+# for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+#     print(f"Dataset {dataset_func.__name__}:")
+#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
     
-    x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
+#     x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
     
-    sequence_length = get_longest_sequence(x)
-    x_train, x_val = pad_sequences(
-        x_train,
-        x_val,
-        w2i.get(".pad"),
-        sequence_length
-    )
+#     sequence_length = get_longest_sequence(x)
+#     x_train, x_val = pad_sequences(
+#         x_train,
+#         x_val,
+#         w2i.get(".pad"),
+#         sequence_length
+#     )
 
-    vocab_size = len(i2w)
-    for pooling_method in ['mean', 'max', 'first']:
-        print(f"Training with {pooling_method} pooling:")
-        model = PoolingBaseline(vocab_size, numcls, pooling=pooling_method)
-        train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
-
+#     vocab_size = len(i2w)
+#     for pooling_method in ['mean', 'max', 'first']:
+#         print(f"  Training with {pooling_method} pooling:")
+#         model = Baseline(vocab_size, numcls, pooling=pooling_method)
+#         train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
 # Q4:
 
 class SimpleSelfAttention(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_t = x.transpose(1, 2)
-        w = (x_t @ x).softmax(dim=-1) # TODO: Check if needs to convert to causal
-        return (w @ x_t).transpose(1, 2)
+        x_t = x.transpose(-2, -1)
+        w = (x_t @ x).softmax(dim=-1)
+        return (w @ x_t).transpose(-2, -1)
     
-class SelfAttention(PoolingBaseline):
-    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='max'):
+class SelfAttentionNN(Baseline):
+    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
         super().__init__(vocab_size, num_classes, pooling)
 
         self.attention = SimpleSelfAttention()
@@ -265,13 +265,84 @@ class SelfAttention(PoolingBaseline):
 #     )
 
 #     vocab_size = len(i2w)
-#     for pooling_method in ['mean', 'max', 'first']:
-#         print(f"  Training with {pooling_method} pooling:")
-#         model = SelfAttention(vocab_size, numcls, pooling=pooling_method)
-#         train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.001, plot=False)
+#     print(f"  Training with first pooling:")
+#     model = SelfAttentionNN(vocab_size, numcls, pooling='first')
+#     train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
     
     
-for dataset_func in [load_imdb_synth, load_xor]:
+# TODO: seems to find perfect accuracy on both with first pooling, so skipping for now 
+# TODO: Implement optuna parameter tuning.
+# for dataset_func in [load_imdb_synth, load_xor]: 
+#     print(f"Dataset {dataset_func.__name__}:")
+#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+    
+#     sequence_length = get_longest_sequence(x_train + x_val)
+#     x_train, x_val = pad_sequences(
+#         x_train,
+#         x_val,
+#         w2i.get(".pad"),
+#         sequence_length
+#     )
+
+#     vocab_size = len(i2w)
+#     print(f"  Training with first pooling:")
+#     model = SelfAttentionNN(vocab_size, numcls, pooling='first')
+#     train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+    
+# Q6
+
+class SelfAttentionHead(torch.nn.Module):
+
+    def __init__(self, embedding_dim: int):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.to_keys = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.to_queries = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.to_values = torch.nn.Linear(embedding_dim, embedding_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        keys = self.to_keys(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
+        queries = self.to_queries(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
+        values = self.to_values(x).transpose(-2, -1) # (B, K, T, E) -> (B, K, E, T)
+
+        scaled_dot_product = (queries @ keys.transpose(-2, -1)) / np.sqrt(self.embedding_dim)
+        w = scaled_dot_product.softmax(dim=-1) # (B, K, E, E)
+        return (w @ values).transpose(-2, -1) # (B, K, E, E) @ (B, K, E, T) -> (B, K, E, T) -> (B, K, T, E)
+    
+class MultiHeadSelfAttention(torch.nn.Module):
+    
+    def __init__(self, embedding_dim: int, num_heads: int):
+        super().__init__()
+        assert embedding_dim % num_heads == 0, "Embedding dimension must be divisible by number of heads"
+        self.heads = torch.nn.ModuleList([
+            SelfAttentionHead(embedding_dim // num_heads) for _ in range(num_heads)
+        ])
+        self.unify_heads = torch.nn.Linear(embedding_dim, embedding_dim)
+
+    def extract_head_dimension(self, x: torch.Tensor, per_head_dim: int) -> int:
+        """
+        Reshapes the embedding dimension into (num_heads, per_head_dim)
+        (B, T, E) -> (B, H, T, E/H)
+        """
+        x = x.view(x.size(0), x.size(1), len(self.heads), per_head_dim)
+        return x.transpose(1, 2).contiguous()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        per_head_dim = x.size(-1) // len(self.heads)
+
+        x = self.extract_head_dimension(x, per_head_dim)  # (B, T, E) -> (B, H, T, E/H)
+        out = torch.cat([head(x[:, i, :, :]) for i, head in enumerate(self.heads)], dim=-1) # (B, T, E)
+        out = self.unify_heads(out)
+        return self.unify_heads(out)
+
+class FullSelfAttentionNN(SelfAttentionNN):
+    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
+        super().__init__(vocab_size, num_classes, pooling)
+
+        self.attention = MultiHeadSelfAttention(embedding_dim=300, num_heads=6)
+
+for dataset_func in [ load_imdb_synth, load_xor]: 
     print(f"Dataset {dataset_func.__name__}:")
     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
@@ -285,9 +356,6 @@ for dataset_func in [load_imdb_synth, load_xor]:
     )
 
     vocab_size = len(i2w)
-    for pooling_method in ['first']:
-        print(f"  Training with {pooling_method} pooling:")
-        model = SelfAttention(vocab_size, numcls, pooling=pooling_method)
-        train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.001, plot=False)
-    
-
+    print(f"  Training with first pooling:")
+    model = FullSelfAttentionNN(vocab_size, numcls, pooling='first')
+    train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
