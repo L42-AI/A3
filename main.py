@@ -322,8 +322,8 @@ class MultiHeadSelfAttention(torch.nn.Module):
 
     def extract_head_dimension(self, x: torch.Tensor, per_head_dim: int) -> int:
         """
-        Reshapes the embedding dimension into (num_heads, per_head_dim)
-        and reorders the tensor to have heads as a separate dimension.
+        Reshapes the embedding dimension to have heads as a separate dimension.
+        and reorders the dimensions to have the important ones for computation at the end.
         (B, T, E) -> (B, H, T, E/H)
         """
         x = x.view(x.size(0), x.size(1), len(self.heads), per_head_dim)
