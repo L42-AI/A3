@@ -360,11 +360,82 @@ for dataset_func in [ load_imdb_synth, load_xor]:
 
 # Q7:
 
-# Q8:
 
+
+# Q8: 
+class SelfAttentionNNPosition(Baseline):
+    def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
+        super().__init__(vocab_size, num_classes, pooling)
+
+        self.attention = SimpleSelfAttention()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x[:, :256]  # Ensure input is capped at 256 tokens
+        
+        tok_embedding = self.embedding(x)
+        B, L = x.size()
+        positions = torch.arange(L, device=x.device).unsqueeze(0).expand(B, L)
+        pos_embedding = self.embedding(positions)
+        embedded = tok_embedding + pos_embedding
+        attended = self.attention(embedded)
+        pooled = self.apply_pooling(attended)
+        return self.fc(pooled)
+    
 #TODO: Add positional encoding to Self-Attention models
 
 # Q9:
 
 #TODO: Build into transformer architecture
 
+# One transformer block
+class TransformerBlock(torch.nn.Module):
+    def __init__(self, embedding_dim: int, num_heads: int, dropout: float = 0.1):
+        super().__init__()
+        self.attention = MultiHeadSelfAttention(embedding_dim, num_heads) # Can be changed to the correct attention mechanism
+        self.norm1 = torch.nn.LayerNorm(embedding_dim)
+        self.dropout1 = torch.nn.Dropout(dropout)
+        # Feed-forward network
+        self.ff = torch.nn.Sequential(
+            torch.nn.Linear(embedding_dim, embedding_dim * 4), # hidden size is 4 times input
+            torch.nn.ReLU(),
+            torch.nn.Linear(embedding_dim * 4, embedding_dim)
+        )
+        self.norm2 = torch.nn.LayerNorm(embedding_dim)
+        self.dropout2 = torch.nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        attn_output = self.attention(x)
+        x = self.norm1(x + self.dropout1(attn_output)) # Residual connection and normalization
+        ff_output = self.ff(x)
+        x = self.norm2(x + self.dropout2(ff_output)) # Residual connection and normalization
+        return x
+
+# Transformer-based model
+class TransformerNN(Baseline):
+    def __init__(self, vocab_size: int, embedding_dim:int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
+        super().__init__(vocab_size, num_classes, pooling)
+        
+        # Positional embedding
+        self.pos_embedding = torch.nn.Embedding(256, embedding_dim) # Max sequence length of 256
+        
+        self.transformer_blocks = torch.nn.ModuleList([
+            TransformerBlock(embedding_dim, num_heads=6) for _ in range(3) # 3 transformer blocks
+        ])
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x[:, :256]  # Ensure input is capped at 256 tokens
+        
+        B, L = x.size()
+
+        # Token embedding
+        tok = self.embedding(x)   # (B, L, 300)
+
+        # Positional indices (assignment allows (1, L) broadcast)
+        positions = torch.arange(L, device=x.device).unsqueeze(0).expand(B, L)
+        pos = self.pos_embedding(positions)
+        h = tok + pos  # Combine token and positional embeddings
+        for block in self.transformer_blocks:
+            h = block(h)
+            
+        pooled = self.apply_pooling(h)
+        return self.fc(pooled)
