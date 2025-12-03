@@ -69,7 +69,6 @@ class Baseline(torch.nn.Module):
         super(Baseline, self).__init__()
         self.embedding = torch.nn.Embedding(vocab_size, 300, padding_idx=0) # Add padding index to ignore .pad token
         self.fc = torch.nn.Linear(300, num_classes)
-        self.activation = torch.nn.Sigmoid()
 
         assert pooling in ['mean', 'max', 'first'], "Pooling must be 'mean', 'max' or 'first'"
         if pooling == 'mean':
@@ -79,14 +78,10 @@ class Baseline(torch.nn.Module):
         elif pooling == 'first':
             self.apply_pooling = lambda embedded: embedded[:, 0, :]
 
-        self.apply_pooling = self._apply_mean_pooling
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         embedded = self.embedding(x)
         pooled = self.apply_pooling(embedded)
-        output = self.fc(pooled)
-
-        return self.activation(output)
+        return self.fc(pooled)
     
     def find_mask(self, x: torch.Tensor) -> torch.Tensor:
         """ all non-zero sums are real embeddings, zeros are padding """
@@ -244,8 +239,7 @@ class SelfAttentionNN(Baseline):
         embedded = self.embedding(x)
         attended = self.attention(embedded)
         pooled = self.apply_pooling(attended)
-        output = self.fc(pooled)
-        return self.activation(output)
+        return self.fc(pooled)
     
 # Q5:
 
