@@ -7,7 +7,7 @@ import numpy as np
 import utils.c_types as type
 from tqdm import tqdm
 
-from utils import load_imdb, load_imdb_synth, load_xor
+from utils import load_imdb, load_imdb_synth, load_xor, load_toy
 
 # Q1
 
@@ -439,3 +439,21 @@ class TransformerNN(Baseline):
             
         pooled = self.apply_pooling(h)
         return self.fc(pooled)
+    
+# Q10:
+
+def get_batch(data: torch.Tensor, batch_size:int, length:int):
+    """
+    Samples `batch_size` sequences of length 'length + 1' from a 1D dataset tensor.
+    
+    Returns:
+        x: Tensor of shape (batch, seq_len + 1)
+    """
+    N = data.size(0)
+    L = length + 1
+    indices = torch.randint(0, N - L, (batch_size,), device=data.device)
+    # Gather sequences
+    idx = indices.unsqueeze(1) + torch.arange(L, device=data.device)
+    
+    batch = data[idx].detach()
+    return batch
