@@ -442,18 +442,21 @@ class TransformerNN(Baseline):
     
 # Q10:
 
-def get_batch(data: torch.Tensor, batch_size:int, length:int):
+def get_batch(data: torch.Tensor, batch_size:int, length:int, device: torch.device=None) -> torch.Tensor:
     """
-    Samples `batch_size` sequences of length 'length + 1' from a 1D dataset tensor.
+    Samples sequences from a 1D dataset tensor.
     
     Returns:
-        x: Tensor of shape (batch, seq_len + 1)
+        x: Tensor of shape (batch, length + 1)
     """
     N = data.size(0)
     L = length + 1
     indices = torch.randint(0, N - L, (batch_size,), device=data.device)
     # Gather sequences
     idx = indices.unsqueeze(1) + torch.arange(L, device=data.device)
-    
+    # Ensure it is not included in computation graph
     batch = data[idx].detach()
+    # In case we want to move to a specific device
+    if device is not None:
+        batch = batch.to(device)
     return batch
