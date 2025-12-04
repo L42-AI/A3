@@ -460,3 +460,31 @@ def get_batch(data: torch.Tensor, batch_size:int, length:int, device: torch.devi
     if device is not None:
         batch = batch.to(device)
     return batch
+
+# Q11:
+
+class AutoregressiveTransformer(torch.nn.Module):
+    def __init__(self, vocab_size: int, embedding_dim:int, block_size:int, n_layer:int, n_head:int, dropout:float=0.1):
+        super().__init__()
+        
+        self.vocab_size = vocab_size
+        self.block_size = block_size
+        
+        self.tok_embedding = torch.nn.Embedding(vocab_size, embedding_dim)
+        self.pos_embedding = torch.nn.Embedding(block_size, embedding_dim)
+        
+        self.transformers = TransformerNN(vocab_size, embedding_dim, vocab_size, pooling='first')
+        self.lm_head = torch.nn.Linear(embedding_dim, vocab_size)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, L = x.size()
+        
+        pos_indices = torch.arange(L, device=x.device)
+        tok_emb = self.tok_embedding(x)
+        pos_emb = self.pos_embedding(pos_indices)
+        
+        x = tok_emb + pos_emb
+        x = self.transformers.forward(x)
+        logits = self.lm_head(x)
+        
+        return logits
