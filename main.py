@@ -202,36 +202,36 @@ def train(
         plt.tight_layout()
         plt.show()
 
-for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
-    print(f"Dataset {dataset_func.__name__}:")
-    dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
-    (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+# for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+#     print(f"Dataset {dataset_func.__name__}:")
+#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
     
-    x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
+#     x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
     
-    sequence_length = get_longest_sequence(x)
-    x_train, x_val = pad_sequences(
-        x_train,
-        x_val,
-        w2i.get(".pad"),
-        sequence_length
-    )
+#     sequence_length = get_longest_sequence(x)
+#     x_train, x_val = pad_sequences(
+#         x_train,
+#         x_val,
+#         w2i.get(".pad"),
+#         sequence_length
+#     )
 
-    vocab_size = len(i2w)
-    for pooling_method in ['mean', 'max', 'first']:
-        print(f"  Training with {pooling_method} pooling:")
-        model = Baseline(vocab_size, numcls, pooling=pooling_method)
-        train(
-            model,
-            x_train,
-            y_train,
-            x_val,
-            y_val,
-            batch_size=64,
-            epochs=5,
-            lr= 0.002,
-            plot=False
-        )
+#     vocab_size = len(i2w)
+#     for pooling_method in ['mean', 'max', 'first']:
+#         print(f"  Training with {pooling_method} pooling:")
+#         model = Baseline(vocab_size, numcls, pooling=pooling_method)
+#         train(
+#             model,
+#             x_train,
+#             y_train,
+#             x_val,
+#             y_val,
+#             batch_size=64,
+#             epochs=5,
+#             lr= 0.002,
+#             plot=False
+#         )
 
 # Q4:
 
@@ -239,8 +239,8 @@ class SimpleSelfAttention(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_t = x.transpose(-2, -1)
-        w = (x_t @ x).softmax(dim=-1)
-        return (w @ x_t).transpose(-2, -1)
+        w = (x @ x_t).softmax(dim=-1)
+        return (x_t @ w).transpose(-2, -1)
     
 class SelfAttentionNN(Baseline):
     def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
