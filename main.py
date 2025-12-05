@@ -411,7 +411,88 @@ class FullSelfAttentionNN(SelfAttentionNN):
 
 # Q7:
 
+import optuna
 
+def create_objective(dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]):
+    """
+    Creates an objective function for optuna hyperparameter tuning.
+    The objective function trains a SelfAttentionNN model and returns validation accuracy.
+    """
+    def objective(trial: optuna.Trial) -> float:
+        # Suggest hyperparameters
+        lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
+        batch_size = trial.suggest_categorical('batch_size', [32, 64, 128])
+        epochs = trial.suggest_int('epochs', 3, 10)
+        
+        # Load data
+        (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+        
+        # Prepare sequences
+        sequence_length = get_longest_sequence(x_train + x_val)
+        x_train, x_val = pad_sequences(
+            x_train,
+            x_val,
+            w2i.get(".pad"),
+            sequence_length
+        )
+        
+        # Create model
+        vocab_size = len(i2w)
+        model = SelfAttentionNN(vocab_size, numcls, pooling='first')
+        
+        # Train model
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        
+        for epoch in range(epochs):
+            # Training
+            train_loss, train_accuracy = run_epoch_on_segment(
+                model=model,
+                x=x_train,
+                y=y_train,
+                batch_size=batch_size,
+                optimizer=optimizer
+            )
+            
+            # Validation
+            val_loss, val_accuracy = run_epoch_on_segment(
+                model=model,
+                x=x_val,
+                y=y_val,
+                batch_size=batch_size,
+                optimizer=None
+            )
+            
+            # Report intermediate value for pruning
+            trial.report(val_accuracy, epoch)
+            
+            # Handle pruning based on the intermediate value
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+        
+        return val_accuracy
+    
+    return objective
+
+# Run optuna tuning for imdb_synth and xor datasets
+for dataset_func in [load_imdb_synth, load_xor]:
+    print(f"\nOptuna hyperparameter tuning for {dataset_func.__name__}:")
+    
+    # Create study
+    study = optuna.create_study(
+        direction='maximize',
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=2)
+    )
+    
+    # Optimize
+    study.optimize(create_objective(dataset_func), n_trials=20, show_progress_bar=True)
+    
+    # Print results
+    print(f"  Best trial:")
+    trial = study.best_trial
+    print(f"    Value (val_accuracy): {trial.value:.4f}")
+    print(f"    Params:")
+    for key, value in trial.params.items():
+        print(f"      {key}: {value}")
 
 # Q8: 
 
