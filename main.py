@@ -286,7 +286,9 @@ for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
         lr= 0.002,
         plot=False
     )    
-    
+
+#TODO implement otuna to tune only on imdb_synth and xor
+
 for dataset_func in [load_imdb_synth, load_xor]: 
     print(f"Dataset {dataset_func.__name__}:")
     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
