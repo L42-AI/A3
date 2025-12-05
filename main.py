@@ -44,6 +44,8 @@ def pad_sequences(x_train: type.X, x_val: type.X, pad_token_id: int, longest_seq
 def train(
     x_train: type.X,
     y_train: type.Y,
+    x_val: type.X,
+    y_val: type.Y,
     batch_size: int = 64
 ) -> None:
 
@@ -66,7 +68,7 @@ def train(
 
 class Baseline(torch.nn.Module):
     def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='mean'):
-        super(Baseline, self).__init__()
+        super().__init__()
         self.embedding = torch.nn.Embedding(vocab_size, 300, padding_idx=0) # Add padding index to ignore .pad token
         self.fc = torch.nn.Linear(300, num_classes)
 
@@ -98,7 +100,6 @@ class Baseline(torch.nn.Module):
         masked_embedded = embedded.masked_fill(~non_pad_mask, float('-inf'))  # Set padded positions to -inf for max pooling
         return masked_embedded.max(dim=1)[0]  # Max pooling over the sequence length dimension
     
-
 # Q3
 
 def run_epoch_on_segment(
@@ -137,6 +138,8 @@ def train(
     model: Baseline,
     x_train: type.X,
     y_train: type.Y,
+    x_val: type.X,
+    y_val: type.Y,
     batch_size: int = 64,
     epochs: int = 5,
     lr: float = 0.001,
@@ -199,26 +202,37 @@ def train(
         plt.tight_layout()
         plt.show()
 
-# for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
-#     print(f"Dataset {dataset_func.__name__}:")
-#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
-#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+    print(f"Dataset {dataset_func.__name__}:")
+    dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+    (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
     
-#     x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
+    x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
     
-#     sequence_length = get_longest_sequence(x)
-#     x_train, x_val = pad_sequences(
-#         x_train,
-#         x_val,
-#         w2i.get(".pad"),
-#         sequence_length
-#     )
+    sequence_length = get_longest_sequence(x)
+    x_train, x_val = pad_sequences(
+        x_train,
+        x_val,
+        w2i.get(".pad"),
+        sequence_length
+    )
 
-#     vocab_size = len(i2w)
-#     for pooling_method in ['mean', 'max', 'first']:
-#         print(f"  Training with {pooling_method} pooling:")
-#         model = Baseline(vocab_size, numcls, pooling=pooling_method)
-#         train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+    vocab_size = len(i2w)
+    for pooling_method in ['mean', 'max', 'first']:
+        print(f"  Training with {pooling_method} pooling:")
+        model = Baseline(vocab_size, numcls, pooling=pooling_method)
+        train(
+            model,
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            batch_size=64,
+            epochs=5,
+            lr= 0.002,
+            plot=False
+        )
+
 # Q4:
 
 class SimpleSelfAttention(torch.nn.Module):
@@ -243,46 +257,63 @@ class SelfAttentionNN(Baseline):
     
 # Q5:
 
-# for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
-#     print(f"Dataset {dataset_func.__name__}:")
-#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
-#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+for dataset_func in [load_imdb, load_imdb_synth, load_xor]:
+    print(f"Dataset {dataset_func.__name__}:")
+    dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+    (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
     
-#     x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
+    x = None if dataset_func.__name__ == "load_imdb" else x_train + x_val # for IMDb, sequence length must be calculated on full dataset
     
-#     sequence_length = get_longest_sequence(x)
-#     x_train, x_val = pad_sequences(
-#         x_train,
-#         x_val,
-#         w2i.get(".pad"),
-#         sequence_length
-#     )
+    sequence_length = get_longest_sequence(x)
+    x_train, x_val = pad_sequences(
+        x_train,
+        x_val,
+        w2i.get(".pad"),
+        sequence_length
+    )
 
-#     vocab_size = len(i2w)
-#     print(f"  Training with first pooling:")
-#     model = SelfAttentionNN(vocab_size, numcls, pooling='first')
-#     train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+    vocab_size = len(i2w)
+    print(f"  Training with first pooling:")
+    model = SelfAttentionNN(vocab_size, numcls, pooling='first')
+    train(
+        model,
+        x_train,
+        y_train,
+        x_val,
+        y_val,
+        batch_size=64,
+        epochs=5,
+        lr= 0.002,
+        plot=False
+    )    
     
+for dataset_func in [load_imdb_synth, load_xor]: 
+    print(f"Dataset {dataset_func.__name__}:")
+    dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+    (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
     
-# TODO: seems to find perfect accuracy on both with first pooling, so skipping for now 
-# TODO: Implement optuna parameter tuning.
-# for dataset_func in [load_imdb_synth, load_xor]: 
-#     print(f"Dataset {dataset_func.__name__}:")
-#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
-#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
-    
-#     sequence_length = get_longest_sequence(x_train + x_val)
-#     x_train, x_val = pad_sequences(
-#         x_train,
-#         x_val,
-#         w2i.get(".pad"),
-#         sequence_length
-#     )
+    sequence_length = get_longest_sequence(x_train + x_val)
+    x_train, x_val = pad_sequences(
+        x_train,
+        x_val,
+        w2i.get(".pad"),
+        sequence_length
+    )
 
-#     vocab_size = len(i2w)
-#     print(f"  Training with first pooling:")
-#     model = SelfAttentionNN(vocab_size, numcls, pooling='first')
-#     train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+    vocab_size = len(i2w)
+    print(f"  Training with first pooling:")
+    model = SelfAttentionNN(vocab_size, numcls, pooling='first')
+    train(
+        model,
+        x_train,
+        y_train,
+        x_val,
+        y_val,
+        batch_size=64,
+        epochs=5,
+        lr= 0.002,
+        plot=False
+    )    
     
 # Q6
 
@@ -310,29 +341,45 @@ class MultiHeadSelfAttention(torch.nn.Module):
     def __init__(self, embedding_dim: int, num_heads: int):
         super().__init__()
         assert embedding_dim % num_heads == 0, "Embedding dimension must be divisible by number of heads"
-        self.heads = torch.nn.ModuleList([
-            SelfAttentionHead(embedding_dim // num_heads) for _ in range(num_heads)
-        ])
+        self.num_heads = num_heads
+        self.embedding_dim = embedding_dim
+        self.attention = SelfAttentionHead(embedding_dim // num_heads)
         self.final_layer = torch.nn.Linear(embedding_dim, embedding_dim)
 
-    def extract_head_dimension(self, x: torch.Tensor, per_head_dim: int) -> int:
+    def expand_head_dimension(self, x: torch.Tensor) -> int:
         """
         Reshapes the embedding dimension to have heads as a separate dimension.
         and reorders the dimensions to have the important ones for computation at the end.
         (B, T, E) -> (B, H, T, E/H)
         """
-        x = x.view(x.size(0), x.size(1), len(self.heads), per_head_dim)
+        batch_size, sequence_length, embedding_dim = x.size()
+        x = x.view(
+            batch_size,
+            sequence_length,
+            self.num_heads,
+            embedding_dim // self.num_heads
+        )
         return x.transpose(1, 2).contiguous()
     
+    def collapse_head_dimension(self, x: torch.Tensor) -> int:
+        """
+        Reshapes the head dimension back into the embedding dimension.
+        and reorders the dimensions back to original.
+        (B, H, T, E/H) -> (B, T, E)
+        """
+        batch_size, num_heads, sequence_length, head_embedding_dim = x.size()
+        x = x.transpose(1, 2).contiguous()
+        return x.view(
+            batch_size,
+            sequence_length,
+            num_heads * head_embedding_dim
+        )
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        per_head_dim = x.size(-1) // len(self.heads)
-
-        x = self.extract_head_dimension(x, per_head_dim)  # (B, T, E) -> (B, H, T, E/H)
-        heads_output = []
-        for head in self.heads:
-            heads_output.append(head(x))
-        unified_heads_output = torch.cat(heads_output, dim=-1)
-        return self.final_layer(unified_heads_output)
+        x = self.expand_head_dimension(x)  # (B, T, E) -> (B, H, T, E/H)
+        x = self.attention(x)  # (B, H, T, E/H)
+        x = self.collapse_head_dimension(x) # (B, H, T, E/H) -> (B, T, E)
+        return self.final_layer(x)
 
 class FullSelfAttentionNN(SelfAttentionNN):
     def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
@@ -340,54 +387,54 @@ class FullSelfAttentionNN(SelfAttentionNN):
 
         self.attention = MultiHeadSelfAttention(embedding_dim=300, num_heads=6)
 
-for dataset_func in [ load_imdb_synth, load_xor]: 
-    print(f"Dataset {dataset_func.__name__}:")
-    dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
-    (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
-    
-    sequence_length = get_longest_sequence(x_train + x_val)
-    x_train, x_val = pad_sequences(
-        x_train,
-        x_val,
-        w2i.get(".pad"),
-        sequence_length
-    )
 
-    vocab_size = len(i2w)
-    print(f"  Training with first pooling:")
-    model = FullSelfAttentionNN(vocab_size, numcls, pooling='first')
-    train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
+# # for dataset_func in [load_imdb_synth, load_xor]: 
+# for dataset_func in [load_imdb, load_imdb_synth, load_xor]: 
+#     print(f"Dataset {dataset_func.__name__}:")
+#     dataset_func: Callable[[], tuple[type.Dataset, type.Dataset, tuple[type.I2W, type.W2I], Literal[2]]]
+#     (x_train, y_train), (x_val, y_val), (i2w, w2i), numcls = dataset_func()
+    
+#     sequence_length = get_longest_sequence(x_train + x_val)
+#     x_train, x_val = pad_sequences(
+#         x_train,
+#         x_val,
+#         w2i.get(".pad"),
+#         sequence_length
+#     )
+
+#     vocab_size = len(i2w)
+#     print(f"  Training with first pooling:")
+#     model = FullSelfAttentionNN(vocab_size, numcls, pooling='first')
+#     train(model, x_train, y_train, batch_size=64, epochs=5, lr= 0.002, plot=False)
 
 # Q7:
 
 
 
 # Q8: 
-class SelfAttentionNNPosition(Baseline):
+
+class PosEmbedding(torch.nn.Module):
+    def __init__(self, vocab_size: int, embedding_dim: int):
+        super().__init__()
+        self.word_embedding = torch.nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
+        self.position_embedding = torch.nn.Embedding(256, embedding_dim) # Max sequence length of 256
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x[:, :256]  # Ensure input is capped at 256 tokens
+        B, L = x.size()
+
+        # Positional indices (assignment allows (1, L) broadcast)
+        positions = torch.arange(L, device=x.device).unsqueeze(0).expand(B, L)
+        return self.word_embedding(x) + self.position_embedding(positions)
+
+class PosAwareFullSelfAttentionNN(FullSelfAttentionNN):
     def __init__(self, vocab_size: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
         super().__init__(vocab_size, num_classes, pooling)
 
-        self.attention = SimpleSelfAttention()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x[:, :256]  # Ensure input is capped at 256 tokens
-        
-        tok_embedding = self.embedding(x)
-        B, L = x.size()
-        positions = torch.arange(L, device=x.device).unsqueeze(0).expand(B, L)
-        pos_embedding = self.embedding(positions)
-        embedded = tok_embedding + pos_embedding
-        attended = self.attention(embedded)
-        pooled = self.apply_pooling(attended)
-        return self.fc(pooled)
-    
-#TODO: Add positional encoding to Self-Attention models
+        self.embedding = PosEmbedding(vocab_size, 300)
 
 # Q9:
 
-#TODO: Build into transformer architecture
-
-# One transformer block
 class TransformerBlock(torch.nn.Module):
     def __init__(self, embedding_dim: int, num_heads: int, dropout: float = 0.1):
         super().__init__()
@@ -410,13 +457,12 @@ class TransformerBlock(torch.nn.Module):
         x = self.norm2(x + self.dropout2(ff_output)) # Residual connection and normalization
         return x
 
-# Transformer-based model
 class TransformerNN(Baseline):
-    def __init__(self, vocab_size: int, embedding_dim:int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
+    def __init__(self, vocab_size: int, embedding_dim: int, num_classes: int, pooling: Literal['mean', 'max', 'first']='first'):
         super().__init__(vocab_size, num_classes, pooling)
         
         # Positional embedding
-        self.pos_embedding = torch.nn.Embedding(256, embedding_dim) # Max sequence length of 256
+        self.embedding = PosEmbedding(vocab_size, embedding_dim)
         
         self.transformer_blocks = torch.nn.ModuleList([
             TransformerBlock(embedding_dim, num_heads=6) for _ in range(3) # 3 transformer blocks
@@ -424,16 +470,10 @@ class TransformerNN(Baseline):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x[:, :256]  # Ensure input is capped at 256 tokens
-        
-        B, L = x.size()
 
-        # Token embedding
-        tok = self.embedding(x)   # (B, L, 300)
+        embedded = self.embedding(x)   # (B, L, 300)
 
-        # Positional indices (assignment allows (1, L) broadcast)
-        positions = torch.arange(L, device=x.device).unsqueeze(0).expand(B, L)
-        pos = self.pos_embedding(positions)
-        h = tok + pos  # Combine token and positional embeddings
+        h = embedded
         for block in self.transformer_blocks:
             h = block(h)
             
@@ -442,7 +482,7 @@ class TransformerNN(Baseline):
     
 # Q10:
 
-def get_batch(data: torch.Tensor, batch_size:int, length:int, device: torch.device=None) -> torch.Tensor:
+def get_batch(data: torch.Tensor, batch_size: int, length: int, device: torch.device=None) -> torch.Tensor:
     """
     Samples sequences from a 1D dataset tensor.
     
